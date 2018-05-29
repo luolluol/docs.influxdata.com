@@ -4,7 +4,7 @@ description: Tutorial on using Kapacitor stream processing and Chronograf to bui
 aliases:
     - kapacitor/v1.4/examples/live_leaderboard/
 menu:
-  kapacitor_1_4:
+  kapacitor_1_5:
     name: Live leaderboard of game scores
     weight: 20
     parent: Guides
@@ -12,26 +12,25 @@ menu:
 
 **If you do not have a running Kapacitor instance, check out [Getting started with Kapacitor](/kapacitor/v1.4/introduction/getting-started/) to get Kapacitor up and running on localhost.**
 
-Today we are game developers.
-We host a several game servers, each running an instance of the game code, with about a hundred players per game.
+In this example, we are game developers.
+We host a several game servers, each running an instance of our game code, with up to a hundred players per game.
 
-We need to build a leaderboard so that spectators can see player scores in realtime.
-We would also like to have historical data on leaders in order to do postgame
+We want to build a leaderboard that displays player scores in real-time for spectators to keep track of the current games and top-ranked players.
+Also, we want to have historical data on leaders stored in a database so that we can do postgame
 analysis on who was leading for how long, etc.
 
-We will use Kapacitor stream processing to do the heavy lifting for us.
-The game servers can send a [UDP](https://en.wikipedia.org/wiki/User_Datagram_Protocol) packet whenever a player's score changes,
-or every 10 seconds if the score hasn't changed.
+We will use Kapacitor stream processing to do the heavy lifting for us, using Chronograf to create the TICKscripts and add a dashboard.
 
-### Setup
+The game servers can send [UDP](https://en.wikipedia.org/wiki/User_Datagram_Protocol) packets whenever a player's score changes, or every 10 seconds if the score hasn't changed.
 
->  **Note:** Copies of the code snippets used here can be found in the  [scores](https://github.com/influxdata/kapacitor/tree/master/examples/scores) example in Kapacitor project on GitHub.
+### Configuring a UDP listener in Kapacitor
 
-First, we need to configure Kapacitor to receive the stream of scores.
-In this example, the scores update too frequently to store all of the score data in a InfluxDB database, so the score data will be semt directly to Kapacitor.
-Like InfluxDB, you can configure a UDP listener.
+First, we need to configure Kapacitor to receive the stream of scores using UDP.
+In our case, the scores update too frequently to store all of them in InfluxDB so we will send them directly to Kapacitor.
 
-Add the following settings the `[[udp]]` secton in  your Kapacitor configuration file (`kapacitor.conf`).
+Just as InfluxDB can be used as a UDP listener, we can configure a UDP listener in Kapacitor. For our leaderboard example, we need to modify the Kapacitor configuration file to configure and enable the UDP listener.
+
+1. Add the following section to the end of your Kapacitor configuration file (`kapacitor.conf`).
 
 ```
 [[udp]]
@@ -41,24 +40,25 @@ Add the following settings the `[[udp]]` secton in  your Kapacitor configuration
     retention-policy = "autogen"
 ```
 
-Using this configuration, Kapacitor will listen on port `9100` for UDP packets in [Line Protocol](/influxdb/v1.5/write_protocols/line_protocol_tutorial/) format.
-Incoming data will be scoped to be in the `game.autogen` database and retention policy.
-Restart Kapacitor so that the UDP listener service starts.
+With this configuration, Kapacitor listens on port `9100` for UDP packets in the [Line Protocol](/influxdb/v1.5/write_protocols/line_protocol_tutorial/) format.
+It will scope incoming data to be in the `game` database using the default retention policy of `autogen`.
 
-Here is a simple bash script to generate random score data so we can test it without
+2. Restart Kapacitor, using the updated configuration file, so that the UDP listener service starts.
+
+The following simple `bash` script will be used to generate random score sample data that we can use to test it without
 messing with the real game servers.
 
 ```bash
 #!/bin/bash
 
-# default options: can be overriden with corresponding arguments.
+# default options: can be overridden with corresponding arguments.
 host=${1-localhost}
 port=${2-9100}
-games=${3-10}
-players=${4-100}
+games=${3-9}
+players=${4-99}
 
-games=$(seq $games)
-players=$(seq $players)
+games=$(seq -w $games)
+players=$(seq -w $players)
 # Spam score updates over UDP
 while true
 do
@@ -69,14 +69,16 @@ do
         do
             player="p$player"
             score=$(($RANDOM % 1000))
-            echo "scores,player=$player,game=$game value=$score" > /dev/udp/$host/$port
+            # echo "scores,player=$player,game=$game value=$score" > /dev/udp/$host/$port
+            # Mac users comment out line above uncomment the line below
+            echo "scores,player=$player,game=$game value=$score" | nc -u "$host" "$port"
         done
     done
     sleep 0.1
 done
 ```
 
-Place the above script into a file `scores.sh` and run it:
+Copy the script above into a file `scores.sh` and run it:
 
 ```bash
 chmod +x ./scores.sh
@@ -92,9 +94,9 @@ the incoming data until it has a task that wants it.
 What does a leaderboard need to do?
 
 1. Get the most recent score per player per game.
-1. Calculate the top X player scores per game.
-1. Publish the results.
-1. Store the results.
+2. Calculate the top X player scores per game.
+3. Publish the results.
+4. Store the results.
 
 To complete step one we need to buffer the incoming stream and return the most recent score update per player per game.
 Our [TICKscript](/kapacitor/v1.4/tick/) will look like this:
@@ -264,7 +266,7 @@ kapacitor define top_scores -tick top_scores.tick
 kapacitor enable top_scores
 ```
 
-First  let's check that the HTTP output is working.
+Let's verify that the HTTP output is working.
 
 ```bash
 curl 'http://localhost:9092/kapacitor/v1/tasks/top_scores/top_scores'
