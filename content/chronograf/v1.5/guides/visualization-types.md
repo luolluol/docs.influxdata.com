@@ -228,6 +228,8 @@ Use the **Gauge Controls** to specify the following:
 
 The **Table** panel displays the results of queries in a tabular view, which is sometimes easier to analyze than graph views of data.
 
+See [Creating a live leaderboard for game scores](/chronograf/guide/live_leaderboard/) for an example using table panels to display player scores and game metrics in real-time.
+
 ![Table selector](/img/chronograf/chrono-viz-table-selector.png)
 
 #### Table Controls

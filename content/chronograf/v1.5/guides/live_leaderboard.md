@@ -45,8 +45,7 @@ It will scope incoming data to be in the `game` database using the default reten
 
 2. Restart Kapacitor, using the updated configuration file, so that the UDP listener service starts.
 
-The following simple `bash` script will be used to generate random score sample data that we can use to test it without
-messing with the real game servers.
+The following `bash` script generates random score sample data that we can use to test it without messing with the real game servers.
 
 ```bash
 #!/bin/bash
@@ -91,7 +90,7 @@ the incoming data until it has a task that wants it.
 
 ### Defining the Kapacitor task
 
-What does a leaderboard need to do?
+What does our leaderboard need to do?
 
 1. Get the most recent score per player per game.
 2. Calculate the top X player scores per game.
@@ -119,12 +118,12 @@ var topPlayerScores = stream
     |last('value')
 ```
 
-Place this script in a file called `top_scores.tick`.
+Copy this script into Chronograf's TICKscript editor called `top_scores`.
 
 Now our `topPlayerScores` variable contains each player's most recent score.
 Next to calculate the top scores per game we just need to group by game and run another map reduce job.
 Let's keep the top 15 scores per game.
-Add these lines to the `top_scores.tick` file.
+Add these lines to the `top_scores` file.
 
 ```javascript
 // Calculate the top 15 scores per game
@@ -154,7 +153,7 @@ But we do not want to store the scores every second as that is still too much da
 First we will sample the data and store scores only every 10 seconds.
 Also let's do some basic analysis ahead of time since we already have a stream of all the data.
 For now we will just do basic gap analysis where we will store the gap between the top player and the 15th player.
-Add these lines to `top_scores.tick` to complete our task.
+Add these lines to `top_scores` to complete our task.
 
 ```javascript
 // Sample the top scores and keep a score once every 10s
@@ -197,7 +196,6 @@ curl -G 'http://localhost:8086/query?' --data-urlencode 'q=CREATE DATABASE game'
 Here is the complete task TICKscript if you don't want to copy paste as much :)
 
 ```javascript
-dbrp "game"."autogen"
 
 // Define a result that contains the most recent score per player.
 var topPlayerScores = stream
@@ -258,6 +256,7 @@ max
         .database('game')
         .measurement('top_scores_gap')
 ```
+
 
 Define and enable our task to see it in action:
 
